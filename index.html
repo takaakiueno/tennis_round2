@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>テニス ダブルス組み合わせ表</title>
+<style>
+  :root {
+    --bg: #f4f6f1;
+    --card: #ffffff;
+    --ink: #1d2a22;
+    --sub: #5d6b62;
+    --line: #dfe5dc;
+    --accent: #2f7a4f;
+    --accent-ink: #ffffff;
+    --soft: #e9f2ec;
+    --warn: #b3402e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Hiragino Sans", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+    line-height: 1.6;
+  }
+  main { max-width: 960px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 22px; margin: 0 0 16px; }
+  h2 { font-size: 17px; margin: 32px 0 12px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  #form { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; }
+  label.field { display: flex; flex-direction: column; font-size: 13px; color: var(--sub); gap: 4px; }
+  input[type=number], select {
+    font: inherit;
+    font-size: 16px;
+    color: var(--ink);
+    padding: 8px 10px;
+    width: 110px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #fff;
+  }
+  input[type=checkbox] { width: 18px; height: 18px; margin: 0; vertical-align: middle; cursor: pointer; accent-color: var(--accent); }
+  button {
+    font: inherit;
+    font-size: 16px;
+    padding: 9px 22px;
+    border-radius: 6px;
+    border: 1px solid var(--accent);
+    background: var(--accent);
+    color: var(--accent-ink);
+    cursor: pointer;
+  }
+  button.sub { background: #fff; color: var(--accent); }
+  button.small { font-size: 13px; padding: 3px 10px; white-space: nowrap; }
+  button:disabled { opacity: .5; cursor: default; }
+  #msg { margin-top: 12px; font-size: 14px; min-height: 1.6em; }
+  #msg.error, .dlgmsg.error { color: var(--warn); }
+
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+  th, td { border: 1px solid var(--line); padding: 3px 7px; text-align: center; white-space: nowrap; }
+  th { background: var(--soft); font-weight: 600; }
+  td.self { background: #f0f0f0; }
+  th.off, td.off { color: #a9b3ac; }
+  .dist { font-size: 14px; margin: 4px 0; }
+  .note { font-size: 13px; color: var(--sub); margin: 4px 0 0; }
+  details { margin-top: 12px; }
+  summary { cursor: pointer; font-size: 14px; }
+
+  table.sched { font-size: 15px; }
+  table.sched th, table.sched td { padding: 4px 12px; }
+  table.sched td.game { font-weight: 600; }
+  table.sched .vs { color: var(--sub); font-weight: 400; margin: 0 8px; }
+  table.sched td.restcell { color: var(--sub); text-align: left; }
+  table.sched tr:nth-child(odd) td { background: #fafbf9; }
+  table.sched td.chk { padding: 4px 8px; }
+  table.sched tr.done td.game, table.sched tr.done td.restcell { color: #a9b3ac; font-weight: 400; }
+  table.sched td.act, table.sched tr:nth-child(odd) td.act,
+  table.sched td.blank, table.sched tr:nth-child(odd) td.blank { border: none; background: transparent; }
+  table.sched td.act { text-align: left; padding: 2px 0 2px 12px; }
+  table.sched td.act button + button { margin-left: 6px; }
+
+  dialog {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 20px;
+    width: min(440px, calc(100vw - 32px));
+    color: var(--ink);
+  }
+  dialog::backdrop { background: rgba(20, 30, 24, .45); }
+  dialog h3 { margin: 0 0 14px; font-size: 17px; }
+  .row { margin-bottom: 16px; }
+  .row > .cap { display: block; font-size: 13px; color: var(--sub); margin-bottom: 4px; }
+  .members { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+  .members label { display: inline-flex; align-items: center; gap: 5px; font-size: 15px; min-width: 52px; cursor: pointer; }
+  .dlgmsg { font-size: 14px; min-height: 1.6em; margin-bottom: 8px; }
+  .buttons { display: flex; gap: 10px; justify-content: flex-end; }
+
+  @media print {
+    body { background: #fff; }
+    .noprint, table.sched td.act { display: none !important; }
+    .card { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>テニス ダブルス組み合わせ表</h1>
+
+  <div class="card noprint">
+    <form id="form">
+      <label class="field">面数
+        <select id="courts">
+          <option value="1">1</option>
+          <option value="2" selected>2</option>
+          <option value="3">3</option>
+        </select>
+      </label>
+      <label class="field">人数
+        <input id="players" type="number" min="4" max="60" value="10">
+      </label>
+      <label class="field">ラウンド数
+        <input id="rounds" type="number" min="1" max="100" value="8">
+      </label>
+      <button id="go" type="submit">決定</button>
+      <button id="print" type="button" class="sub" hidden>印刷</button>
+    </form>
+    <div id="msg"></div>
+  </div>
+
+  <div id="result"></div>
+</main>
+
+<dialog id="dlgMembers">
+  <form id="formMembers">
+    <h3>メンバー追加・削除</h3>
+    <div class="row">
+      <label class="cap" for="mAdd">新しく参加する人数</label>
+      <input id="mAdd" type="number" min="0" max="56" value="0">
+      <p class="note" id="mAddNote"></p>
+    </div>
+    <div class="row">
+      <span class="cap">削除するメンバー(抜ける人にチェック)</span>
+      <div class="members" id="mRemove"></div>
+    </div>
+    <div class="row" id="mRestoreRow">
+      <span class="cap">復帰するメンバー(戻る人にチェック)</span>
+      <div class="members" id="mRestore"></div>
+    </div>
+    <div class="row">
+      <label class="cap" for="mRounds">ラウンド数</label>
+      <input id="mRounds" type="number" min="1" max="100">
+      <p class="note" id="mRoundsNote"></p>
+    </div>
+    <div class="dlgmsg" id="mMsg"></div>
+    <div class="buttons">
+      <button type="button" class="sub" id="mCancel">キャンセル</button>
+      <button type="submit" id="mOk">決定</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlgCourts">
+  <form id="formCourts">
+    <h3>面数の変更</h3>
+    <div class="row">
+      <label class="cap" for="cCourts">面数</label>
+      <select id="cCourts">
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+      </select>
+      <p class="note" id="cNote"></p>
+    </div>
+    <div class="dlgmsg" id="cMsg"></div>
+    <div class="buttons">
+      <button type="button" class="sub" id="cCancel">キャンセル</button>
+      <button type="submit" id="cOk">決定</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+"use strict";
+
+/* ===== 組み合わせ生成ロジック ===== */
+
+var WP = 3;  // ペア(味方)の重複の重み
+var WO = 1;  // 対戦相手の重複の重み
+var MAX_PLAYERS = 60;
+var MAX_ROUNDS = 100;
+
+function now() {
+  return (typeof performance !== "undefined") ? performance.now() : Date.now();
+}
+
+function shuffle(a) {
+  for (var i = a.length - 1; i > 0; i--) {
+    var j = Math.floor(Math.random() * (i + 1));
+    var t = a[i]; a[i] = a[j]; a[j] = t;
+  }
+  return a;
+}
+
+function matrix(n) {
+  var m = [];
+  for (var i = 0; i < n; i++) m.push(new Array(n).fill(0));
+  return m;
+}
+
+// 状態: ペア回数 P, 対戦回数 O, 評価値 total (= WP*ΣP² + WO*ΣO²、小さいほど均等)
+function newState(n) {
+  return { P: matrix(n), O: matrix(n), total: 0 };
+}
+
+function cloneState(st) {
+  return {
+    P: st.P.map(function (r) { return r.slice(); }),
+    O: st.O.map(function (r) { return r.slice(); }),
+    total: st.total
+  };
+}
+
+function bump(st, M, a, b, sign, w) {
+  var c = M[a][b];
+  st.total += (sign > 0) ? w * (2 * c + 1) : -w * (2 * c - 1);
+  M[a][b] = M[b][a] = c + sign;
+}
+
+// court = [a, b, c, d] は「a・b 対 c・d」
+function applyCourt(st, m, sign) {
+  bump(st, st.P, m[0], m[1], sign, WP);
+  bump(st, st.P, m[2], m[3], sign, WP);
+  bump(st, st.O, m[0], m[2], sign, WO);
+  bump(st, st.O, m[0], m[3], sign, WO);
+  bump(st, st.O, m[1], m[2], sign, WO);
+  bump(st, st.O, m[1], m[3], sign, WO);
+}
+
+function applyRound(st, round, sign) {
+  for (var i = 0; i < round.courts.length; i++) applyCourt(st, round.courts[i], sign);
+}
+
+// 出場者 sel (4×面数 人) を、現在の履歴に対して最もコストが低くなるよう
+// コートとペアに分ける。全通りを調べる(同点はランダム)。
+function bestRound(sel, st) {
+  var n = sel.length, full = (1 << n) - 1;
+  var P = st.P, O = st.O;
+  var cache = new Map();
+
+  function quad(i, j, k, l) {
+    var key = (1 << i) | (1 << j) | (1 << k) | (1 << l);
+    var v = cache.get(key);
+    if (v) return v;
+    var a = sel[i], b = sel[j], c = sel[k], d = sel[l];
+    var opts = [[a, b, c, d], [a, c, b, d], [a, d, b, c]];
+    var best = Infinity, pick = null, ties = 0;
+    for (var x = 0; x < 3; x++) {
+      var o = opts[x];
+      var cost = WP * (P[o[0]][o[1]] + P[o[2]][o[3]]) +
+                 WO * (O[o[0]][o[2]] + O[o[0]][o[3]] + O[o[1]][o[2]] + O[o[1]][o[3]]);
+      if (cost < best) { best = cost; pick = o; ties = 1; }
+      else if (cost === best) { ties++; if (Math.random() * ties < 1) pick = o; }
+    }
+    v = { cost: best, m: pick };
+    cache.set(key, v);
+    return v;
+  }
+
+  var bestCost = Infinity, bestCourts = null, ties = 0, cur = [];
+  (function rec(mask, cost) {
+    if (cost > bestCost) return;
+    if (mask === full) {
+      if (cost < bestCost) { bestCost = cost; bestCourts = cur.slice(); ties = 1; }
+      else { ties++; if (Math.random() * ties < 1) bestCourts = cur.slice(); }
+      return;
+    }
+    var i = 0;
+    while ((mask >> i) & 1) i++;
+    for (var j = i + 1; j < n; j++) {
+      if ((mask >> j) & 1) continue;
+      for (var k = j + 1; k < n; k++) {
+        if ((mask >> k) & 1) continue;
+        for (var l = k + 1; l < n; l++) {
+          if ((mask >> l) & 1) continue;
+          var q = quad(i, j, k, l);
+          cur.push(q.m);
+          rec(mask | (1 << i) | (1 << j) | (1 << k) | (1 << l), cost + q.cost);
+          cur.pop();
+        }
+      }
+    }
+  })(0, 0);
+
+  return bestCourts.map(function (m) { return m.slice(); });
+}
+
+// 貪欲法で「続きのラウンド」を1回組む
+// ctx: { base(確定分を反映した状態), ids(参加者), C, count, games0, last0, start }
+function buildOnce(ctx) {
+  var st = cloneState(ctx.base);
+  var games = ctx.games0.slice();
+  var last = ctx.last0.slice();
+  var gen = [];
+  for (var r = 0; r < ctx.count; r++) {
+    var order = shuffle(ctx.ids.slice());
+    // 出場数が少ない人 → 休みが長い人 の順に優先(同順位はシャッフル順)
+    order.sort(function (a, b) { return (games[a] - games[b]) || (last[a] - last[b]); });
+    var sel = shuffle(order.slice(0, 4 * ctx.C));
+    var rest = order.slice(4 * ctx.C).sort(function (a, b) { return a - b; });
+    for (var s = 0; s < sel.length; s++) { games[sel[s]]++; last[sel[s]] = ctx.start + r; }
+    var round = { courts: bestRound(sel, st), rest: rest };
+    applyRound(st, round, 1);
+    gen.push(round);
+  }
+  return { gen: gen, st: st };
+}
+
+// 同じラウンド内の出場者2人を入れ替えて、評価値が悪化しなければ採用する(作り直す範囲のみ)
+function improve(gen, st, C, budgetMs) {
+  if (!gen.length) return;
+  var end = now() + budgetMs;
+  if (C === 1) {
+    // 1面は各ラウンドのペアの組み替え(3通り)を順に見直す
+    var changed = true;
+    while (changed && now() < end) {
+      changed = false;
+      for (var r = 0; r < gen.length; r++) {
+        var m = gen[r].courts[0];
+        for (var s = 2; s <= 3; s++) {
+          var before = st.total;
+          applyCourt(st, m, -1);
+          var t = m[1]; m[1] = m[s]; m[s] = t;
+          applyCourt(st, m, 1);
+          if (st.total < before) { changed = true; }
+          else {
+            applyCourt(st, m, -1);
+            t = m[1]; m[1] = m[s]; m[s] = t;
+            applyCourt(st, m, 1);
+          }
+        }
+      }
+    }
+    return;
+  }
+  var iter = 0;
+  while (true) {
+    if ((++iter & 255) === 0 && now() > end) break;
+    var round = gen[Math.floor(Math.random() * gen.length)];
+    var c1 = Math.floor(Math.random() * C), s1 = Math.floor(Math.random() * 4);
+    var c2 = Math.floor(Math.random() * C), s2 = Math.floor(Math.random() * 4);
+    if (c1 === c2 && (s1 >> 1) === (s2 >> 1)) continue; // 同じペア内は入れ替えても同じ
+    var b4 = st.total;
+    applyRound(st, round, -1);
+    var x = round.courts[c1][s1]; round.courts[c1][s1] = round.courts[c2][s2]; round.courts[c2][s2] = x;
+    applyRound(st, round, 1);
+    if (st.total > b4) {
+      applyRound(st, round, -1);
+      x = round.courts[c1][s1]; round.courts[c1][s1] = round.courts[c2][s2]; round.courts[c2][s2] = x;
+      applyRound(st, round, 1);
+    }
+  }
+}
+
+// 時間の許す限り貪欲法をやり直して最良を選び、最後に入れ替えで改善
+function generate(ctx, budgetMs) {
+  budgetMs = budgetMs || 1200;
+  var end = now() + budgetMs * 0.5;
+  var best = null, tries = 0;
+  do {
+    var cand = buildOnce(ctx);
+    tries++;
+    if (!best || cand.st.total < best.st.total) best = cand;
+  } while (now() < end);
+  improve(best.gen, best.st, ctx.C, budgetMs * 0.5);
+  // 表示用に整える: ペア内は番号順、番号の小さいペアを左に
+  best.gen.forEach(function (round) {
+    round.courts.forEach(function (m) {
+      var p1 = [m[0], m[1]].sort(function (a, b) { return a - b; });
+      var p2 = [m[2], m[3]].sort(function (a, b) { return a - b; });
+      if (p1[0] > p2[0]) { var t = p1; p1 = p2; p2 = t; }
+      m[0] = p1[0]; m[1] = p1[1]; m[2] = p2[0]; m[3] = p2[1];
+    });
+  });
+  return { schedule: best.gen, tries: tries };
+}
+
+/* ===== 計画データ =====
+   d = { C: これから使う面数, R: 全体のラウンド数, total: これまでに発行した番号の数,
+         active[p]: 参加中か, offset[p]: 途中参加の人に与える「みなし試合数」,
+         schedule: [{courts, rest}], checks: [bool] }                              */
+
+function newPlan(C, N, R) {
+  return {
+    C: C, R: 0, total: N,
+    active: new Array(N).fill(true),
+    offset: new Array(N).fill(0),
+    schedule: [], checks: []
+  };
+}
+
+function lastCheckedIndex(d) {
+  for (var i = d.checks.length - 1; i >= 0; i--) if (d.checks[i]) return i;
+  return -1;
+}
+
+function activeIds(active) {
+  var ids = [];
+  for (var p = 0; p < active.length; p++) if (active[p]) ids.push(p);
+  return ids;
+}
+
+// 変更を適用し、一番下のチェックより後のラウンドを作り直す。
+// o = { add: 追加人数, remove: [番号], restore: [番号], C: 面数, R: 全体ラウンド数 }
+// 成功時 { fixed, count, tries }、失敗時 { error } を返す(失敗時 d は変更しない)。
+function applyChange(d, o, budgetMs) {
+  var fixed = lastCheckedIndex(d) + 1;
+  var active = d.active.slice(), offset = d.offset.slice(), total = d.total;
+  var p, i;
+
+  // 確定分(チェック済みまで)の実績
+  var games = new Array(total).fill(0), last = new Array(total).fill(-1);
+  for (var r = 0; r < fixed; r++) {
+    d.schedule[r].courts.forEach(function (m) {
+      m.forEach(function (q) { games[q]++; last[q] = r; });
+    });
+  }
+
+  o.remove.forEach(function (q) { active[q] = false; });
+
+  // 途中参加の人は「その時点の全員の平均試合数」を持っているものとして扱う
+  var sum = 0, cnt = 0;
+  for (p = 0; p < total; p++) if (active[p]) { sum += games[p] + offset[p]; cnt++; }
+  var avg = cnt ? sum / cnt : 0;
+
+  o.restore.forEach(function (q) {
+    active[q] = true;
+    offset[q] = Math.max(offset[q], avg - games[q]);
+  });
+  for (i = 0; i < o.add; i++) { active.push(true); offset.push(avg); games.push(0); last.push(-1); total++; }
+
+  var ids = activeIds(active);
+  if (ids.length < 4 * o.C) {
+    return { error: "参加人数 " + ids.length + " 人では、" + o.C + "面に必要な " + (4 * o.C) +
+      " 人に足りません。" + (o.remove.length && o.C > 1 ? "先に面数を減らしてください。" : "") };
+  }
+  if (ids.length > MAX_PLAYERS) return { error: "参加人数は " + MAX_PLAYERS + " 人以下にしてください。" };
+  if (!(o.R >= d.R)) return { error: "ラウンド数は減らせません(現在 " + d.R + ")。" };
+  if (!(o.R >= 1 && o.R <= MAX_ROUNDS)) return { error: "ラウンド数は 1〜" + MAX_ROUNDS + " にしてください。" };
+
+  var count = o.R - fixed, tries = 0;
+  var prefix = d.schedule.slice(0, fixed);
+  var schedule = d.schedule;
+  if (count > 0) {
+    var base = newState(total);
+    prefix.forEach(function (round) { applyRound(base, round, 1); });
+    var games0 = games.map(function (g, q) { return g + offset[q]; });
+    var out = generate({ base: base, ids: ids, C: o.C, count: count, games0: games0, last0: last, start: fixed }, budgetMs);
+    schedule = prefix.concat(out.schedule);
+    tries = out.tries;
+  }
+
+  d.active = active; d.offset = offset; d.total = total;
+  d.C = o.C; d.R = o.R;
+  d.schedule = schedule;
+  d.checks = d.checks.slice(0, fixed);
+  return { fixed: fixed, count: count, tries: tries };
+}
+
+function stats(d) {
+  var n = d.total;
+  var st = newState(n);
+  var games = new Array(n).fill(0), rests = new Array(n).fill(0);
+  d.schedule.forEach(function (round) {
+    applyRound(st, round, 1);
+    round.courts.forEach(function (m) { m.forEach(function (p) { games[p]++; }); });
+    round.rest.forEach(function (p) { rests[p]++; });
+  });
+  var pd = {}, od = {};
+  for (var i = 0; i < n; i++) for (var j = i + 1; j < n; j++) {
+    if (!d.active[i] || !d.active[j]) continue;
+    pd[st.P[i][j]] = (pd[st.P[i][j]] || 0) + 1;
+    od[st.O[i][j]] = (od[st.O[i][j]] || 0) + 1;
+  }
+  return { P: st.P, O: st.O, games: games, rests: rests, pairDist: pd, oppDist: od };
+}
+
+/* ===== 画面 ===== */
+
+if (typeof document !== "undefined") {
+  var $ = function (id) { return document.getElementById(id); };
+  var STORE_KEY = "tennis-doubles-schedule-v2";
+  var BUDGET = 1200;
+  var current = null;
+
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+
+  function save() {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(current)); return true; }
+    catch (e) { return false; }
+  }
+
+  function load() {
+    try {
+      var d = JSON.parse(localStorage.getItem(STORE_KEY));
+      if (!d || !Array.isArray(d.schedule) || d.schedule.length !== d.R) return null;
+      if (!Array.isArray(d.active) || !Array.isArray(d.offset)) return null;
+      if (d.active.length !== d.total || d.offset.length !== d.total) return null;
+      if (!(d.C >= 1 && d.C <= 3)) return null;
+      if (!Array.isArray(d.checks)) d.checks = [];
+      var okId = function (p) { return Number.isInteger(p) && p >= 0 && p < d.total; };
+      var ok = d.schedule.every(function (round) {
+        return round && Array.isArray(round.rest) && round.rest.every(okId) &&
+          Array.isArray(round.courts) && round.courts.length >= 1 &&
+          round.courts.every(function (m) { return Array.isArray(m) && m.length === 4 && m.every(okId); });
+      });
+      return ok ? d : null;
+    } catch (e) { return null; }
+  }
+
+  function distText(dist) {
+    var keys = Object.keys(dist).map(Number).sort(function (a, b) { return a - b; });
+    if (!keys.length) return "―";
+    return keys.map(function (k) { return k + "回: " + dist[k] + "組"; }).join(" / ");
+  }
+
+  function setMsg(text, isError) {
+    $("msg").textContent = text;
+    $("msg").className = isError ? "error" : "";
+  }
+
+  function syncTopInputs() {
+    $("courts").value = String(current.C);
+    $("players").value = activeIds(current.active).length;
+    $("rounds").value = current.R;
+  }
+
+  function actionButtons() {
+    var td = el("td", "act");
+    var b1 = el("button", "sub small", "メンバー追加・削除");
+    b1.type = "button";
+    b1.addEventListener("click", openMembers);
+    var b2 = el("button", "sub small", "面数");
+    b2.type = "button";
+    b2.addEventListener("click", openCourts);
+    td.appendChild(b1);
+    td.appendChild(b2);
+    return td;
+  }
+
+  function render(focusRound) {
+    var d = current;
+    var root = $("result");
+    root.textContent = "";
+    var nActive = activeIds(d.active).length;
+
+    root.appendChild(el("h2", "", "組み合わせ(" + d.C + "面・" + nActive + "人・" + d.R + "ラウンド)"));
+
+    var maxC = 0, hasRest = false;
+    d.schedule.forEach(function (round) {
+      maxC = Math.max(maxC, round.courts.length);
+      if (round.rest.length) hasRest = true;
+    });
+    var btnRow = lastCheckedIndex(d) + 1; // チェックが1つもなければボタンは出さない
+    var showButtons = btnRow > 0;
+
+    var sched = el("table", "sched");
+    var hr = el("tr");
+    hr.appendChild(el("th", "", ""));
+    hr.appendChild(el("th", "", "R"));
+    for (var c = 0; c < maxC; c++) hr.appendChild(el("th", "", "コート" + (c + 1)));
+    if (hasRest) hr.appendChild(el("th", "", "休み"));
+    sched.appendChild(hr);
+
+    d.schedule.forEach(function (round, r) {
+      var tr = el("tr");
+      var chkCell = el("td", "chk");
+      var chk = el("input");
+      chk.type = "checkbox";
+      chk.setAttribute("aria-label", "第" + (r + 1) + "ラウンド");
+      chk.checked = !!d.checks[r];
+      if (chk.checked) tr.className = "done";
+      chk.addEventListener("change", function () {
+        d.checks[r] = chk.checked;
+        save();
+        render(r);
+      });
+      chkCell.appendChild(chk);
+      tr.appendChild(chkCell);
+      tr.appendChild(el("th", "", r + 1));
+      for (var c = 0; c < maxC; c++) {
+        var m = round.courts[c];
+        var td = el("td", "game");
+        if (m) {
+          td.appendChild(document.createTextNode((m[0] + 1) + "・" + (m[1] + 1)));
+          td.appendChild(el("span", "vs", "-"));
+          td.appendChild(document.createTextNode((m[2] + 1) + "・" + (m[3] + 1)));
+        }
+        tr.appendChild(td);
+      }
+      if (hasRest) {
+        tr.appendChild(el("td", "restcell",
+          round.rest.map(function (p) { return p + 1; }).join(", ")));
+      }
+      if (showButtons && r === btnRow) tr.appendChild(actionButtons());
+      sched.appendChild(tr);
+    });
+
+    if (showButtons && btnRow === d.schedule.length) {
+      // 最後の行までチェック済み: その下にボタンだけの行を出す
+      var extra = el("tr", "extra");
+      var blank = el("td", "blank", "");
+      blank.colSpan = 2 + maxC + (hasRest ? 1 : 0);
+      extra.appendChild(blank);
+      extra.appendChild(actionButtons());
+      sched.appendChild(extra);
+    }
+
+    var schedWrap = el("div", "card scroll");
+    schedWrap.appendChild(sched);
+    root.appendChild(schedWrap);
+
+    if (focusRound !== undefined) {
+      var boxes = sched.querySelectorAll("td.chk input");
+      if (boxes[focusRound]) boxes[focusRound].focus();
+    }
+
+    // --- 偏りのチェック ---
+    var s = stats(d);
+    var anyOff = d.active.some(function (a) { return !a; });
+    root.appendChild(el("h2", "", "偏りのチェック"));
+    var box = el("div", "card");
+    box.appendChild(el("div", "dist", "同じ人とペアを組んだ回数 … " + distText(s.pairDist)));
+    box.appendChild(el("div", "dist", "同じ人と対戦した回数 … " + distText(s.oppDist)));
+    if (anyOff) box.appendChild(el("p", "note", "上の2行は現在の参加者どうしの集計です。薄い番号は抜けたメンバーです。"));
+
+    var wrap = el("div", "scroll");
+    var tbl = el("table");
+    var rows = [["番号"], ["試合数"], ["休み"]];
+    for (var i = 0; i < d.total; i++) { rows[0].push(i + 1); rows[1].push(s.games[i]); rows[2].push(s.rests[i]); }
+    rows.forEach(function (cells, ri) {
+      var tr = el("tr");
+      cells.forEach(function (v, ci) {
+        var cell = el(ri === 0 || ci === 0 ? "th" : "td", "", v);
+        if (ci > 0 && !d.active[ci - 1]) cell.className = "off";
+        tr.appendChild(cell);
+      });
+      tbl.appendChild(tr);
+    });
+    wrap.appendChild(tbl);
+    wrap.style.marginTop = "10px";
+    box.appendChild(wrap);
+
+    var det = el("details");
+    det.appendChild(el("summary", "", "全員分の内訳表(ペア回数 / 対戦回数)"));
+    var wrap2 = el("div", "scroll");
+    var t2 = el("table");
+    var head = el("tr");
+    head.appendChild(el("th", "", ""));
+    for (i = 0; i < d.total; i++) head.appendChild(el("th", d.active[i] ? "" : "off", i + 1));
+    t2.appendChild(head);
+    for (i = 0; i < d.total; i++) {
+      var tr2 = el("tr");
+      tr2.appendChild(el("th", d.active[i] ? "" : "off", i + 1));
+      for (var j = 0; j < d.total; j++) {
+        if (i === j) tr2.appendChild(el("td", "self", ""));
+        else tr2.appendChild(el("td", (d.active[i] && d.active[j]) ? "" : "off", s.P[i][j] + "/" + s.O[i][j]));
+      }
+      t2.appendChild(tr2);
+    }
+    wrap2.appendChild(t2);
+    wrap2.style.marginTop = "8px";
+    det.appendChild(wrap2);
+    box.appendChild(det);
+    root.appendChild(box);
+
+    $("print").hidden = false;
+  }
+
+  /* --- 上の「決定」: 最初から全部作り直す --- */
+  $("form").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var C = parseInt($("courts").value, 10);
+    var N = parseInt($("players").value, 10);
+    var R = parseInt($("rounds").value, 10);
+    if (!(N >= 4 * C)) { setMsg("人数は " + (4 * C) + " 人以上(面数×4以上)にしてください。", true); return; }
+    if (N > MAX_PLAYERS) { setMsg("人数は " + MAX_PLAYERS + " 人以下にしてください。", true); return; }
+    if (!(R >= 1 && R <= MAX_ROUNDS)) { setMsg("ラウンド数は 1〜" + MAX_ROUNDS + " にしてください。", true); return; }
+    if (current && current.checks.some(Boolean) &&
+        !window.confirm("いまの組み合わせとチェックをすべて消して、最初から作り直します。よろしいですか?\n(途中からの変更は、表の中の「メンバー追加・削除」「面数」ボタンを使ってください)")) return;
+
+    setMsg("計算中…", false);
+    $("go").disabled = true;
+    setTimeout(function () {
+      try {
+        var plan = newPlan(C, N, R);
+        var res = applyChange(plan, { add: 0, remove: [], restore: [], C: C, R: R }, BUDGET);
+        if (res.error) { setMsg(res.error, true); }
+        else {
+          current = plan;
+          var saved = save();
+          render();
+          setMsg("作成しました(" + res.tries + " 通りの案から最良のものを選択)。もう一度「決定」を押すと別の案を作ります。" +
+            (saved ? "" : " ※このブラウザでは保存できないため、再読み込みすると消えます。"), false);
+        }
+      } catch (e) {
+        setMsg("エラーが発生しました: " + e.message, true);
+      }
+      $("go").disabled = false;
+    }, 30);
+  });
+
+  $("print").addEventListener("click", function () { window.print(); });
+
+  /* --- 途中からの変更(共通) --- */
+  function runChange(o, dlg, msgEl, buttons) {
+    msgEl.className = "dlgmsg";
+    msgEl.textContent = "計算中…";
+    buttons.forEach(function (b) { b.disabled = true; });
+    setTimeout(function () {
+      var res;
+      try { res = applyChange(current, o, BUDGET); }
+      catch (e) { res = { error: "エラーが発生しました: " + e.message }; }
+      buttons.forEach(function (b) { b.disabled = false; });
+      if (res.error) {
+        msgEl.className = "dlgmsg error";
+        msgEl.textContent = res.error;
+        return;
+      }
+      var saved = save();
+      syncTopInputs();
+      render();
+      dlg.close();
+      setMsg((res.count > 0
+        ? "第" + (res.fixed + 1) + "ラウンド以降を作り直しました(" + res.tries + " 通りの案から最良のものを選択)。"
+        : "変更を記録しました。作り直すラウンドがないため、表はそのままです(続きを作るにはラウンド数を増やしてください)。") +
+        (saved ? "" : " ※このブラウザでは保存できないため、再読み込みすると消えます。"), false);
+    }, 30);
+  }
+
+  /* --- メンバー追加・削除 --- */
+  function memberBoxes(container, ids) {
+    container.textContent = "";
+    ids.forEach(function (p) {
+      var lab = el("label");
+      var cb = el("input");
+      cb.type = "checkbox";
+      cb.value = String(p);
+      lab.appendChild(cb);
+      lab.appendChild(document.createTextNode(String(p + 1)));
+      container.appendChild(lab);
+    });
+  }
+
+  function checkedIds(container) {
+    return Array.prototype.slice.call(container.querySelectorAll("input:checked"))
+      .map(function (cb) { return parseInt(cb.value, 10); });
+  }
+
+  function openMembers() {
+    var d = current;
+    var act = activeIds(d.active);
+    var off = [];
+    for (var p = 0; p < d.total; p++) if (!d.active[p]) off.push(p);
+    $("mAdd").value = 0;
+    $("mAddNote").textContent = "新しい人の番号は " + (d.total + 1) + " から順に付きます。";
+    memberBoxes($("mRemove"), act);
+    memberBoxes($("mRestore"), off);
+    $("mRestoreRow").hidden = off.length === 0;
+    $("mRounds").min = d.R;
+    $("mRounds").value = d.R;
+    $("mRoundsNote").textContent = "全体の合計ラウンド数です。増やすことだけできます(現在 " + d.R + ")。";
+    $("mMsg").textContent = "";
+    $("dlgMembers").showModal();
+  }
+
+  $("formMembers").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var add = parseInt($("mAdd").value, 10);
+    var R = parseInt($("mRounds").value, 10);
+    var msg = $("mMsg");
+    msg.className = "dlgmsg error";
+    if (!(add >= 0)) { msg.textContent = "新しく参加する人数は 0 以上で入力してください。"; return; }
+    if (!(R >= current.R)) { msg.textContent = "ラウンド数は減らせません(現在 " + current.R + ")。"; return; }
+    runChange({
+      add: add,
+      remove: checkedIds($("mRemove")),
+      restore: checkedIds($("mRestore")),
+      C: current.C,
+      R: R
+    }, $("dlgMembers"), msg, [$("mOk"), $("mCancel")]);
+  });
+  $("mCancel").addEventListener("click", function () { $("dlgMembers").close(); });
+
+  /* --- 面数 --- */
+  function openCourts() {
+    var n = activeIds(current.active).length;
+    $("cCourts").value = String(current.C);
+    $("cNote").textContent = "現在の参加人数は " + n + " 人です(面数×4人以上が必要)。チェック済みのラウンドはそのまま残ります。";
+    $("cMsg").textContent = "";
+    $("dlgCourts").showModal();
+  }
+
+  $("formCourts").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    runChange({
+      add: 0, remove: [], restore: [],
+      C: parseInt($("cCourts").value, 10),
+      R: current.R
+    }, $("dlgCourts"), $("cMsg"), [$("cOk"), $("cCancel")]);
+  });
+  $("cCancel").addEventListener("click", function () { $("dlgCourts").close(); });
+
+  /* --- 前回の組み合わせとチェックを復元 --- */
+  current = load();
+  if (current) {
+    syncTopInputs();
+    render();
+    setMsg("前回の組み合わせを表示しています。上の「決定」を押すと最初から作り直します。", false);
+  }
+}
+</script>
+</body>
+</html>
