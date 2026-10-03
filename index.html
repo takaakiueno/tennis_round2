@@ -78,13 +78,11 @@
   table.sched td.game { font-weight: 600; }
   table.sched .vs { color: var(--sub); font-weight: 400; margin: 0 8px; }
   table.sched td.restcell { color: var(--sub); text-align: left; }
-  table.sched tr:nth-child(odd) td { background: #fafbf9; }
+  table.sched tr.alt td { background: #fafbf9; }
   table.sched td.chk { padding: 4px 8px; }
   table.sched tr.done td.game, table.sched tr.done td.restcell { color: #a9b3ac; font-weight: 400; }
-  table.sched td.act, table.sched tr:nth-child(odd) td.act,
-  table.sched td.blank, table.sched tr:nth-child(odd) td.blank { border: none; background: transparent; }
-  table.sched td.act { text-align: left; padding: 2px 0 2px 12px; }
-  table.sched td.act button + button { margin-left: 6px; }
+  table.sched td.act { text-align: left; padding: 6px 8px; background: var(--soft); }
+  table.sched td.act .actbar { display: inline-flex; gap: 8px; position: sticky; left: 8px; }
 
   dialog {
     border: 1px solid var(--line);
@@ -104,7 +102,7 @@
 
   @media print {
     body { background: #fff; }
-    .noprint, table.sched td.act { display: none !important; }
+    .noprint, table.sched tr.actrow { display: none !important; }
     .card { break-inside: avoid; }
   }
 </style>
@@ -546,17 +544,23 @@ if (typeof document !== "undefined") {
     $("rounds").value = current.R;
   }
 
-  function actionButtons() {
+  // ボタンだけの行(一番下のチェックの行のすぐ下に入れる)
+  function actionRow(colCount) {
+    var tr = el("tr", "actrow");
     var td = el("td", "act");
+    td.colSpan = colCount;
+    var bar = el("div", "actbar");
     var b1 = el("button", "sub small", "メンバー追加・削除");
     b1.type = "button";
     b1.addEventListener("click", openMembers);
     var b2 = el("button", "sub small", "面数");
     b2.type = "button";
     b2.addEventListener("click", openCourts);
-    td.appendChild(b1);
-    td.appendChild(b2);
-    return td;
+    bar.appendChild(b1);
+    bar.appendChild(b2);
+    td.appendChild(bar);
+    tr.appendChild(td);
+    return tr;
   }
 
   function render(focusRound) {
@@ -572,8 +576,8 @@ if (typeof document !== "undefined") {
       maxC = Math.max(maxC, round.courts.length);
       if (round.rest.length) hasRest = true;
     });
-    var btnRow = lastCheckedIndex(d) + 1; // チェックが1つもなければボタンは出さない
-    var showButtons = btnRow > 0;
+    var lastChk = lastCheckedIndex(d); // チェックが1つもなければボタンは出さない
+    var colCount = 2 + maxC + (hasRest ? 1 : 0);
 
     var sched = el("table", "sched");
     var hr = el("tr");
@@ -613,19 +617,10 @@ if (typeof document !== "undefined") {
         tr.appendChild(el("td", "restcell",
           round.rest.map(function (p) { return p + 1; }).join(", ")));
       }
-      if (showButtons && r === btnRow) tr.appendChild(actionButtons());
+      if (r % 2 === 0) tr.classList.add("alt");
       sched.appendChild(tr);
+      if (r === lastChk) sched.appendChild(actionRow(colCount));
     });
-
-    if (showButtons && btnRow === d.schedule.length) {
-      // 最後の行までチェック済み: その下にボタンだけの行を出す
-      var extra = el("tr", "extra");
-      var blank = el("td", "blank", "");
-      blank.colSpan = 2 + maxC + (hasRest ? 1 : 0);
-      extra.appendChild(blank);
-      extra.appendChild(actionButtons());
-      sched.appendChild(extra);
-    }
 
     var schedWrap = el("div", "card scroll");
     schedWrap.appendChild(sched);
