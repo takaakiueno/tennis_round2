@@ -128,6 +128,7 @@
       </label>
       <button id="go" type="submit">決定</button>
       <button id="print" type="button" class="sub" hidden>印刷</button>
+      <button id="share" type="button" class="sub" hidden>共有リンクをコピー</button>
     </form>
     <div id="msg"></div>
   </div>
@@ -510,8 +511,13 @@ if (typeof document !== "undefined") {
   }
 
   function load() {
+    try { return validPlan(JSON.parse(localStorage.getItem(STORE_KEY))); }
+    catch (e) { return null; }
+  }
+
+  // 保存データや共有リンクの中身が、表として正しい形かを確かめる(だめなら null)
+  function validPlan(d) {
     try {
-      var d = JSON.parse(localStorage.getItem(STORE_KEY));
       if (!d || !Array.isArray(d.schedule) || d.schedule.length !== d.R) return null;
       if (!Array.isArray(d.active) || !Array.isArray(d.offset)) return null;
       if (d.active.length !== d.total || d.offset.length !== d.total) return null;
@@ -681,6 +687,7 @@ if (typeof document !== "undefined") {
     root.appendChild(box);
 
     $("print").hidden = false;
+    $("share").hidden = false;
   }
 
   /* --- 上の「決定」: 最初から全部作り直す --- */
@@ -817,12 +824,170 @@ if (typeof document !== "undefined") {
   });
   $("cCancel").addEventListener("click", function () { $("dlgCourts").close(); });
 
-  /* --- 前回の組み合わせとチェックを復元 --- */
-  current = load();
-  if (current) {
+  /* --- 共有リンク ---
+     表の中身(組み合わせ・メンバーの出入り・リンクを作った時点のチェック)を短い文字列にして、
+     URL の # の後ろに付ける。サーバーには何も送らず、URL そのものがデータになる。
+     形式(1バイトずつ): 版, 面数, ラウンド数, 番号の総数, 参加中フラグ(ビット列), チェック(ビット列),
+       みなし試合数の個数, [番号, 値×100 の上位, 下位]…, ラウンドごとに [試合数, 4人×試合数, 休みの人数, 休みの人…] */
+  var SHARE_PREFIX = "#s=";
+
+  function packBits(flags) {
+    var out = new Array(Math.ceil(flags.length / 8)).fill(0);
+    flags.forEach(function (f, i) { if (f) out[i >> 3] |= 1 << (i & 7); });
+    return out;
+  }
+
+  function encodeShare(d) {
+    if (d.total > 250 || d.R > 250) return null;
+    var b = [1, d.C, d.R, d.total];
+    b = b.concat(packBits(d.active));
+    var checks = [];
+    for (var r = 0; r < d.R; r++) checks.push(!!d.checks[r]);
+    b = b.concat(packBits(checks));
+    var offs = [];
+    d.offset.forEach(function (v, p) {
+      var x = Math.min(65535, Math.max(0, Math.round(v * 100)));
+      if (x > 0) offs.push(p, x >> 8, x & 255);
+    });
+    b.push(offs.length / 3);
+    b = b.concat(offs);
+    d.schedule.forEach(function (round) {
+      b.push(round.courts.length);
+      round.courts.forEach(function (m) { b.push(m[0], m[1], m[2], m[3]); });
+      b.push(round.rest.length);
+      b = b.concat(round.rest);
+    });
+    var bin = "";
+    b.forEach(function (x) { bin += String.fromCharCode(x); });
+    return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+
+  function decodeShare(text) {
+    try {
+      var bin = atob(text.replace(/-/g, "+").replace(/_/g, "/"));
+      var pos = 0;
+      var next = function () {
+        if (pos >= bin.length) throw new Error("short");
+        return bin.charCodeAt(pos++);
+      };
+      var bits = function (count) {
+        var bytes = [], i;
+        for (i = 0; i < Math.ceil(count / 8); i++) bytes.push(next());
+        var out = [];
+        for (i = 0; i < count; i++) out.push(!!(bytes[i >> 3] & (1 << (i & 7))));
+        return out;
+      };
+      if (next() !== 1) return null;
+      var d = { C: next(), R: next(), total: next() };
+      d.active = bits(d.total);
+      d.checks = bits(d.R);
+      d.offset = new Array(d.total).fill(0);
+      var n = next(), i;
+      for (i = 0; i < n; i++) {
+        var p = next(), hi = next(), lo = next();
+        if (p >= d.total) return null;
+        d.offset[p] = (hi * 256 + lo) / 100;
+      }
+      d.schedule = [];
+      for (var r = 0; r < d.R; r++) {
+        var round = { courts: [], rest: [] };
+        var nc = next();
+        for (i = 0; i < nc; i++) round.courts.push([next(), next(), next(), next()]);
+        var nr = next();
+        for (i = 0; i < nr; i++) round.rest.push(next());
+        d.schedule.push(round);
+      }
+      if (pos !== bin.length) return null;
+      return validPlan(d);
+    } catch (e) { return null; }
+  }
+
+  // チェック以外(組み合わせとメンバー)が同じ表かどうか
+  function samePlan(a, b) {
+    var key = function (d) { return JSON.stringify([d.C, d.R, d.total, d.active, d.schedule]); };
+    return key(a) === key(b);
+  }
+
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text).catch(function () { return legacyCopy(text); });
+    }
+    return legacyCopy(text);
+  }
+
+  function legacyCopy(text) {
+    return new Promise(function (resolve, reject) {
+      var ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+      ta.remove();
+      if (ok) resolve(); else reject(new Error("copy failed"));
+    });
+  }
+
+  $("share").addEventListener("click", function () {
+    if (!current) return;
+    var data = encodeShare(current);
+    if (!data) { setMsg("人数またはラウンド数が多すぎるため、共有リンクを作れません。", true); return; }
+    var url = location.href.split("#")[0] + SHARE_PREFIX + data;
+    copyText(url).then(function () {
+      setMsg("共有リンクをコピーしました。LINE やメールに貼り付けて送ってください。" +
+        "表を作り直したりメンバー・面数を変えたりしたときは、もう一度コピーして送り直してください。", false);
+    }, function () {
+      window.prompt("自動でコピーできませんでした。下のリンクをコピーして送ってください。", url);
+    });
+  });
+
+  // URL に共有リンクのデータが付いていれば取り込む。取り込んだら true。
+  function importFromHash() {
+    if (location.hash.indexOf(SHARE_PREFIX) !== 0) return false;
+    var shared = decodeShare(location.hash.slice(SHARE_PREFIX.length));
+    // 取り込んだあとは URL からデータを外す(再読み込みで手元のチェックが巻き戻らないように)
+    try { history.replaceState(null, "", location.href.split("#")[0]); }
+    catch (e) { try { location.hash = ""; } catch (e2) { /* 何もしない */ } }
+
+    if (!shared) {
+      setMsg("共有リンクを読み取れませんでした。リンクが途中で切れていないか確認してください。", true);
+      return false;
+    }
+    var local = load();
+    if (local && samePlan(local, shared)) {
+      // 同じ表をもう一度開いただけ: この端末で付けたチェックを残す
+      current = local;
+      syncTopInputs();
+      render();
+      setMsg("共有された組み合わせを表示しています(この端末で付けたチェックはそのままです)。", false);
+      return true;
+    }
+    if (local && !window.confirm("共有リンクの組み合わせを開きます。\nこの端末に保存されている今の表は置き換えられます。よろしいですか?")) {
+      return false;
+    }
+    current = shared;
+    var saved = save();
     syncTopInputs();
     render();
-    setMsg("前回の組み合わせを表示しています。上の「決定」を押すと最初から作り直します。", false);
+    setMsg("共有された組み合わせを表示しています。" +
+      (saved ? "" : " ※このブラウザでは保存できないため、再読み込みすると消えます。"), false);
+    return true;
+  }
+
+  window.addEventListener("hashchange", function () { importFromHash(); });
+
+  /* --- 共有リンク、なければ前回の組み合わせとチェックを復元 --- */
+  if (!importFromHash()) {
+    var keepMsg = $("msg").textContent; // 共有リンクの読み取りエラーが出ていれば残す
+    current = load();
+    if (current) {
+      syncTopInputs();
+      render();
+      if (!keepMsg) setMsg("前回の組み合わせを表示しています。上の「決定」を押すと最初から作り直します。", false);
+    }
   }
 }
 </script>
