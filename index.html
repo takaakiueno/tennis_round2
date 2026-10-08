@@ -70,8 +70,8 @@
   th.off, td.off { color: #a9b3ac; }
   .dist { font-size: 14px; margin: 4px 0; }
   .note { font-size: 13px; color: var(--sub); margin: 4px 0 0; }
-  details { margin-top: 12px; }
-  summary { cursor: pointer; font-size: 14px; }
+  .notice { margin-top: 16px; background: #fff8e6; border-color: #f0dca8; font-size: 14px; }
+  .inner h3 { font-size: 14px; margin: 0 0 6px; }
 
   table.sched { font-size: 15px; }
   table.sched th, table.sched td { padding: 4px 12px; }
@@ -132,6 +132,8 @@
     </form>
     <div id="msg"></div>
   </div>
+
+  <div id="notice" class="card notice" hidden>※人数が面数×4の倍数のため、同じ顔ぶればかりにならないよう、一部の人の休みを不公平が出ないロジックで1ラウンド長くしています。</div>
 
   <div id="result"></div>
 </main>
@@ -300,12 +302,46 @@ function bestRound(sel, st) {
   return bestCourts.map(function (m) { return m.slice(); });
 }
 
+// 参加人数が「1ラウンドの出場人数(面数×4)」のちょうど k 倍(k は2以上)のとき、
+// 全員の休みの間隔をそろえると k ラウンドごとに同じ顔ぶれが出るだけになる(顔ぶれの固定)。
+// これを防ぐため、毎ラウンド1人だけ、試合数が同じ「出る予定の人」と「休む予定の人」を入れ替える。
+// 入れ替えで休みが延びるのは1ラウンドまで(連続休みは最長でも k ラウンド)。
+// 延びる役は、まだ延びたことのない人から順に回す。
+function mixFactor(nPlayers, C) {
+  var per = 4 * C;
+  return (nPlayers % per === 0 && nPlayers / per >= 2) ? nPlayers / per : 0;
+}
+
+function mixSwap(sel, rest, games, last, ext, r, k) {
+  var bestO = -1, bestI = -1, bestKey = null, ties = 0;
+  for (var a = 0; a < sel.length; a++) {
+    var o = sel[a];
+    if (last[o] < 0 || r - last[o] > k) continue; // 休みが k ラウンドを超えてしまう人は延ばさない
+    for (var b = 0; b < rest.length; b++) {
+      var i = rest[b];
+      if (games[i] !== games[o]) continue;        // 試合数が同じ人どうしだけ(試合数の差は変わらない)
+      // 優先: 延びたことの少ない人 → 代わりに出る人は前のラウンドに出ていない人 → 休みが長い人
+      var key = [ext[o], last[i] === r - 1 ? 1 : 0, last[i]];
+      var cmp = 0;
+      if (bestKey) for (var x = 0; x < 3 && !cmp; x++) cmp = key[x] - bestKey[x];
+      if (!bestKey || cmp < 0) { bestKey = key; bestO = a; bestI = b; ties = 1; }
+      else if (cmp === 0) { ties++; if (Math.random() * ties < 1) { bestO = a; bestI = b; } }
+    }
+  }
+  if (bestO < 0) return;
+  var t = sel[bestO]; sel[bestO] = rest[bestI]; rest[bestI] = t;
+  ext[t]++;
+  rest.sort(function (p, q) { return p - q; });
+}
+
 // 貪欲法で「続きのラウンド」を1回組む
 // ctx: { base(確定分を反映した状態), ids(参加者), C, count, games0, last0, start }
 function buildOnce(ctx) {
   var st = cloneState(ctx.base);
   var games = ctx.games0.slice();
   var last = ctx.last0.slice();
+  var ext = new Array(last.length).fill(0);
+  var k = mixFactor(ctx.ids.length, ctx.C);
   var gen = [];
   for (var r = 0; r < ctx.count; r++) {
     var order = shuffle(ctx.ids.slice());
@@ -313,8 +349,10 @@ function buildOnce(ctx) {
     order.sort(function (a, b) { return (games[a] - games[b]) || (last[a] - last[b]); });
     var sel = shuffle(order.slice(0, 4 * ctx.C));
     var rest = order.slice(4 * ctx.C).sort(function (a, b) { return a - b; });
+    if (k && ctx.start + r > 0) mixSwap(sel, rest, games, last, ext, ctx.start + r, k);
     for (var s = 0; s < sel.length; s++) { games[sel[s]]++; last[sel[s]] = ctx.start + r; }
     var round = { courts: bestRound(sel, st), rest: rest };
+    if (k) round.mx = true; // 顔ぶれ固定の対策を使ったラウンド
     applyRound(st, round, 1);
     gen.push(round);
   }
@@ -469,7 +507,7 @@ function applyChange(d, o, budgetMs) {
   d.C = o.C; d.R = o.R;
   d.schedule = schedule;
   d.checks = d.checks.slice(0, fixed);
-  return { fixed: fixed, count: count, tries: tries };
+  return { fixed: fixed, count: count, tries: tries, mixed: count > 0 && mixFactor(ids.length, o.C) > 0 };
 }
 
 function stats(d) {
@@ -569,8 +607,15 @@ if (typeof document !== "undefined") {
     return tr;
   }
 
+  // 顔ぶれ固定の対策を使ったラウンドがあれば、入力欄と組み合わせ表の間にお知らせを出す
+  function updateNotice() {
+    var on = !!(current && current.schedule.some(function (round) { return round.mx; }));
+    $("notice").hidden = !on;
+  }
+
   function render(focusRound) {
     var d = current;
+    updateNotice();
     var root = $("result");
     root.textContent = "";
     var nActive = activeIds(d.active).length;
@@ -663,8 +708,11 @@ if (typeof document !== "undefined") {
     wrap.style.marginTop = "10px";
     box.appendChild(wrap);
 
-    var det = el("details");
-    det.appendChild(el("summary", "", "全員分の内訳表(ペア回数 / 対戦回数)"));
+    root.appendChild(box);
+
+    // --- 全員分の内訳表(最初から表示) ---
+    root.appendChild(el("h2", "", "全員分の内訳表(ペア回数 / 対戦回数)"));
+    var det = el("div", "card inner");
     var wrap2 = el("div", "scroll");
     var t2 = el("table");
     var head = el("tr");
@@ -681,10 +729,8 @@ if (typeof document !== "undefined") {
       t2.appendChild(tr2);
     }
     wrap2.appendChild(t2);
-    wrap2.style.marginTop = "8px";
     det.appendChild(wrap2);
-    box.appendChild(det);
-    root.appendChild(box);
+    root.appendChild(det);
 
     $("print").hidden = false;
     $("share").hidden = false;
@@ -852,7 +898,7 @@ if (typeof document !== "undefined") {
     b.push(offs.length / 3);
     b = b.concat(offs);
     d.schedule.forEach(function (round) {
-      b.push(round.courts.length);
+      b.push(round.courts.length | (round.mx ? 128 : 0));
       round.courts.forEach(function (m) { b.push(m[0], m[1], m[2], m[3]); });
       b.push(round.rest.length);
       b = b.concat(round.rest);
@@ -892,6 +938,7 @@ if (typeof document !== "undefined") {
       for (var r = 0; r < d.R; r++) {
         var round = { courts: [], rest: [] };
         var nc = next();
+        if (nc & 128) { round.mx = true; nc &= 127; }
         for (i = 0; i < nc; i++) round.courts.push([next(), next(), next(), next()]);
         var nr = next();
         for (i = 0; i < nr; i++) round.rest.push(next());
@@ -904,7 +951,7 @@ if (typeof document !== "undefined") {
 
   // チェック以外(組み合わせとメンバー)が同じ表かどうか
   function samePlan(a, b) {
-    var key = function (d) { return JSON.stringify([d.C, d.R, d.total, d.active, d.schedule]); };
+    var key = function (d) { return JSON.stringify([d.C, d.R, d.total, d.active, d.schedule.map(function (r) { return [r.courts, r.rest]; })]); };
     return key(a) === key(b);
   }
 
