@@ -359,63 +359,19 @@ function buildOnce(ctx) {
   return { gen: gen, st: st };
 }
 
-// 同じラウンド内の出場者2人を入れ替えて、評価値が悪化しなければ採用する(作り直す範囲のみ)
-function improve(gen, st, C, budgetMs) {
-  if (!gen.length) return;
-  var end = now() + budgetMs;
-  if (C === 1) {
-    // 1面は各ラウンドのペアの組み替え(3通り)を順に見直す
-    var changed = true;
-    while (changed && now() < end) {
-      changed = false;
-      for (var r = 0; r < gen.length; r++) {
-        var m = gen[r].courts[0];
-        for (var s = 2; s <= 3; s++) {
-          var before = st.total;
-          applyCourt(st, m, -1);
-          var t = m[1]; m[1] = m[s]; m[s] = t;
-          applyCourt(st, m, 1);
-          if (st.total < before) { changed = true; }
-          else {
-            applyCourt(st, m, -1);
-            t = m[1]; m[1] = m[s]; m[s] = t;
-            applyCourt(st, m, 1);
-          }
-        }
-      }
-    }
-    return;
-  }
-  var iter = 0;
-  while (true) {
-    if ((++iter & 255) === 0 && now() > end) break;
-    var round = gen[Math.floor(Math.random() * gen.length)];
-    var c1 = Math.floor(Math.random() * C), s1 = Math.floor(Math.random() * 4);
-    var c2 = Math.floor(Math.random() * C), s2 = Math.floor(Math.random() * 4);
-    if (c1 === c2 && (s1 >> 1) === (s2 >> 1)) continue; // 同じペア内は入れ替えても同じ
-    var b4 = st.total;
-    applyRound(st, round, -1);
-    var x = round.courts[c1][s1]; round.courts[c1][s1] = round.courts[c2][s2]; round.courts[c2][s2] = x;
-    applyRound(st, round, 1);
-    if (st.total > b4) {
-      applyRound(st, round, -1);
-      x = round.courts[c1][s1]; round.courts[c1][s1] = round.courts[c2][s2]; round.courts[c2][s2] = x;
-      applyRound(st, round, 1);
-    }
-  }
-}
-
-// 時間の許す限り貪欲法をやり直して最良を選び、最後に入れ替えで改善
+// 時間の許す限り貪欲法をやり直して、評価値が最も小さい案を選ぶ。
+// 全ラウンドを通した入れ替え(局所探索)は行わない。最後のラウンドに合わせて組み替えると、
+// 途中のラウンドで打ち切ったときの均等さが悪くなるため。各案は1ラウンドずつ、
+// それまでのラウンドだけを見て組み立てているので、どこで打ち切っても均等さが保たれやすい。
 function generate(ctx, budgetMs) {
   budgetMs = budgetMs || 1200;
-  var end = now() + budgetMs * 0.5;
+  var end = now() + budgetMs;
   var best = null, tries = 0;
   do {
     var cand = buildOnce(ctx);
     tries++;
     if (!best || cand.st.total < best.st.total) best = cand;
   } while (now() < end);
-  improve(best.gen, best.st, ctx.C, budgetMs * 0.5);
   // 表示用に整える: ペア内は番号順、番号の小さいペアを左に
   best.gen.forEach(function (round) {
     round.courts.forEach(function (m) {
